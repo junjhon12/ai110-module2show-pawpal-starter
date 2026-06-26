@@ -1,15 +1,19 @@
 """PawPal+ logic layer (backend classes).
 
-Phase 2: full implementation of the core classes, verified CLI-first
-(via main.py) before being wired into the Streamlit UI.
+Phase 4: adds smarter scheduling — sorting by time, filtering, recurring
+tasks, and lightweight conflict detection.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import date, timedelta
 
 # Priority labels ranked so higher numbers schedule first.
 PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
+
+# How many days forward each recurrence frequency repeats.
+FREQUENCY_DAYS = {"daily": 1, "weekly": 7}
 
 
 @dataclass
@@ -19,7 +23,9 @@ class Task:
     name: str
     duration_min: int
     priority: str = "medium"  # "low" | "medium" | "high"
-    frequency: str = "daily"  # e.g. "daily", "weekly"
+    frequency: str = "daily"  # "daily" | "weekly" | "once"
+    time: str = ""  # scheduled start time in "HH:MM" (24h), optional
+    due_date: date | None = None
     done: bool = False
 
     def mark_complete(self) -> None:
@@ -29,6 +35,14 @@ class Task:
     def priority_value(self) -> int:
         """Return the numeric rank of this task's priority (higher = sooner)."""
         return PRIORITY_RANK.get(self.priority.lower(), 0)
+
+    def next_occurrence(self) -> "Task | None":
+        """Return a fresh, not-done copy due next cycle, or None if non-recurring."""
+        step = FREQUENCY_DAYS.get(self.frequency.lower())
+        if step is None:
+            return None
+        base = self.due_date or date.today()
+        return replace(self, due_date=base + timedelta(days=step), done=False)
 
 
 @dataclass
@@ -72,14 +86,59 @@ class Owner:
 
 
 class Scheduler:
-    """Builds a daily plan from an owner's tasks, respecting time and priority."""
+    """Builds a daily plan and runs smarter scheduling logic for an owner."""
 
     def __init__(self, owner: Owner):
         self.owner = owner
         self._last_skipped: list[tuple[Pet, Task]] = []
 
+    # --- sorting -----------------------------------------------------------
+    def sort_by_time(self, tasks: list[Task] | None = None) -> list[Task]:
+        """Return tasks sorted by their "HH:MM" time; untimed tasks go last."""
+        if tasks is None:
+            tasks = [t for _, t in self.owner.all_tasks()]
+        # Empty time sorts after any real time because "" < "00:00" otherwise.
+        return sorted(tasks, key=lambda t: (t.time == "", t.time))
+
+    # --- filtering ---------------------------------------------------------
+    def filter_tasks(
+        self, pet_name: str | None = None, done: bool | None = None
+    ) -> list[Task]:
+        """Return tasks filtered by pet name and/or completion status."""
+        result = []
+        for pet, task in self.owner.all_tasks():
+            if pet_name is not None and pet.name != pet_name:
+                continue
+            if done is not None and task.done != done:
+                continue
+            result.append(task)
+        return result
+
+    # --- recurring tasks ---------------------------------------------------
+    def complete_task(self, pet: Pet, task: Task) -> Task | None:
+        """Mark a task complete and queue its next occurrence if recurring."""
+        task.mark_complete()
+        upcoming = task.next_occurrence()
+        if upcoming is not None:
+            pet.add_task(upcoming)
+        return upcoming
+
+    # --- conflict detection ------------------------------------------------
+    def detect_conflicts(self) -> list[str]:
+        """Return warning strings for tasks sharing the same start time."""
+        by_time: dict[str, list[str]] = {}
+        for pet, task in self.owner.all_tasks():
+            if task.time and not task.done:
+                by_time.setdefault(task.time, []).append(f"{task.name} ({pet.name})")
+        return [
+            f"Conflict at {t}: {', '.join(names)} overlap."
+            for t, names in by_time.items()
+            if len(names) > 1
+        ]
+
+    # --- daily plan --------------------------------------------------------
     def _sorted_tasks(self) -> list[tuple[Pet, Task]]:
-        """Return all pending tasks sorted by priority (desc) then duration (asc)."""
+        """Return pending tasks sorted by priority (desc) then duration (asc)."""
         pending = [(p, t) for p, t in self.owner.all_tasks() if not t.done]
         return sorted(
             pending,

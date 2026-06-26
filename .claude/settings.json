@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import ast,io; ast.parse\\(io.open\\('app.py',encoding='utf-8'\\).read\\(\\)\\); print\\('app.py syntax OK'\\)\")"
+    ]
+  }
+}

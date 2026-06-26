@@ -40,8 +40,15 @@ data classes so the planning rules can change without touching Pet/Task.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+My conflict detection (`Scheduler.detect_conflicts()`) only flags tasks that share
+the **exact same start time** — it does not check whether two tasks *overlap* based on
+their durations (e.g., an 08:00 task lasting 30 min running into an 08:15 task). I chose
+exact-match because it is simple, fast, and easy to reason about, and because most
+everyday pet-care tasks are entered on round, recurring times (08:00, 12:00, 18:00),
+so exact collisions catch the common case. The tradeoff is that subtle overlaps slip
+through. That is reasonable for this scenario: the app is a planning aid, not a
+hard real-time scheduler, and it warns rather than blocks — so the owner still makes
+the final call. Duration-aware overlap detection is a clear next step if needed.
 
 ---
 
