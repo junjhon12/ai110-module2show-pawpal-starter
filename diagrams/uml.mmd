@@ -8,6 +8,7 @@ classDiagram
         +list~Pet~ pets
         +add_pet(pet: Pet) None
         +list_pets() list~Pet~
+        +all_tasks() list~Pet,Task~
     }
 
     class Pet {
@@ -23,17 +24,18 @@ classDiagram
         +str name
         +int duration_min
         +str priority
+        +str frequency
         +bool done
-        +mark_done() None
+        +mark_complete() None
+        +priority_value() int
     }
 
     class Scheduler {
-        +int minutes_available
-        +list~str~ preferences
-        +build_plan(tasks: list~Task~) list~Task~
+        +Owner owner
+        +build_plan() list~Pet,Task~
         +explain() str
     }
 
     Owner "1" --> "*" Pet : has
     Pet "1" --> "*" Task : has
-    Scheduler ..> Task : schedules
+    Scheduler --> Owner : plans for
