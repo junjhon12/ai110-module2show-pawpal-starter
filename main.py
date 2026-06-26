@@ -1,27 +1,70 @@
 """Demo / testing-ground script for PawPal+ (CLI-first verification).
 
+Showcases the smarter scheduler plus the challenge features:
+priority-then-time planning, next-available-slot search, JSON persistence,
+and professional formatting (emojis, color, tabulate tables).
+
 Run with:  python main.py
 """
 
+import sys
+
+from tabulate import tabulate
+
 from pawpal_system import Owner, Pet, Scheduler, Task
+
+# Ensure emojis/box-drawing render on Windows terminals (default cp1252).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+# ANSI color codes for color-coded status in the terminal.
+COLORS = {"high": "\033[91m", "medium": "\033[93m", "low": "\033[92m", "reset": "\033[0m"}
+
+# Emoji per task type, inferred from the task name keywords.
+TYPE_EMOJI = [
+    ("walk", "🚶"), ("feed", "🍽️"), ("med", "💊"),
+    ("play", "🎾"), ("groom", "✂️"), ("enrich", "🧩"),
+]
+
+
+def task_emoji(name: str) -> str:
+    """Return an emoji that matches the task type, defaulting to a paw."""
+    lowered = name.lower()
+    for keyword, emoji in TYPE_EMOJI:
+        if keyword in lowered:
+            return emoji
+    return "🐾"
+
+
+def color_priority(priority: str) -> str:
+    """Wrap a priority label in its ANSI color for terminal output."""
+    return f"{COLORS.get(priority, '')}{priority}{COLORS['reset']}"
 
 
 def print_schedule(scheduler: Scheduler) -> None:
-    """Print a readable 'Today's Schedule' for the owner."""
+    """Print 'Today's Schedule' as a formatted, color-coded table."""
     owner = scheduler.owner
     plan = scheduler.build_plan()
 
-    print(f"Today's Schedule for {owner.name}")
-    print("=" * 40)
+    print(f"\n📅 Today's Schedule for {owner.name}")
     if not plan:
         print("  (no tasks planned)")
-    for i, (pet, task) in enumerate(plan, start=1):
-        status = "done" if task.done else "todo"
-        print(
-            f"  {i}. {task.name} for {pet.name} "
-            f"({task.duration_min} min) [priority: {task.priority}] [{status}]"
-        )
-    print("-" * 40)
+        return
+
+    rows = [
+        [
+            i,
+            task.time or "--:--",
+            f"{task_emoji(task.name)} {task.name}",
+            pet.name,
+            f"{task.duration_min} min",
+            color_priority(task.priority),
+            "✅" if task.done else "⬜",
+        ]
+        for i, (pet, task) in enumerate(plan, start=1)
+    ]
+    headers = ["#", "Time", "Task", "Pet", "Duration", "Priority", "Done"]
+    print(tabulate(rows, headers=headers, tablefmt="rounded_outline"))
     print(scheduler.explain())
 
 
@@ -33,7 +76,7 @@ def main() -> None:
     owner.add_pet(biscuit)
     owner.add_pet(mittens)
 
-    # Tasks added intentionally OUT OF TIME ORDER to exercise sorting.
+    # Tasks added intentionally OUT OF ORDER to exercise priority+time sorting.
     biscuit.add_task(Task("Evening walk", 30, "high", "daily", time="18:00"))
     biscuit.add_task(Task("Morning walk", 30, "high", "daily", time="08:00"))
     biscuit.add_task(Task("Feeding", 10, "high", "daily", time="08:00"))  # conflict @08:00
@@ -44,28 +87,21 @@ def main() -> None:
 
     print_schedule(scheduler)
 
-    print("\nTasks sorted by time:")
-    for t in scheduler.sort_by_time():
-        print(f"  {t.time or '--:--'}  {t.name}")
+    print("\n🔍 Conflict detection:")
+    for warning in scheduler.detect_conflicts() or ["  (none)"]:
+        print(f"  ⚠️ {warning}")
 
-    print("\nFilter — Biscuit's tasks:")
-    for t in scheduler.filter_tasks(pet_name="Biscuit"):
-        print(f"  {t.name}")
+    # Challenge 1: next available slot.
+    slot = scheduler.next_available_slot(duration_min=45)
+    print(f"\n🕳️  Next free 45-min slot today: {slot}")
 
-    print("\nConflict detection:")
-    conflicts = scheduler.detect_conflicts()
-    for warning in conflicts or ["  (none)"]:
-        print(f"  {warning}")
-
-    print("\nRecurring tasks — completing Biscuit's morning walk:")
-    morning = next(t for t in biscuit.tasks if t.name == "Morning walk")
-    upcoming = scheduler.complete_task(biscuit, morning)
-    print(f"  Completed: {morning.name} (done={morning.done})")
-    print(f"  Next occurrence due: {upcoming.due_date} (done={upcoming.done})")
-
-    print("\nFilter — completed tasks now:")
-    for t in scheduler.filter_tasks(done=True):
-        print(f"  {t.name}")
+    # Challenge 2: persistence round-trip.
+    owner.save_to_json("data.json")
+    reloaded = Owner.load_from_json("data.json")
+    print(
+        f"\n💾 Saved to data.json and reloaded "
+        f"{len(reloaded.pets)} pets, {len(reloaded.all_tasks())} tasks."
+    )
 
 
 if __name__ == "__main__":

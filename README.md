@@ -17,7 +17,9 @@ Your job is to design the system first (UML), then implement the logic in Python
 PawPal+ implements the following scheduling logic (see `pawpal_system.py`):
 
 - **Owner / Pet / Task model** — an owner manages multiple pets, each with its own list of care tasks (name, duration, priority, time, frequency).
-- **Priority-aware daily planning** — `Scheduler.build_plan()` orders tasks by priority, then shortest duration, and packs them into the owner's available minutes.
+- **Priority-then-time planning** — `Scheduler.build_plan()` orders tasks by priority first, then start time, then shortest duration, and packs them into the owner's available minutes.
+- **Next available slot** — `Scheduler.next_available_slot()` finds the earliest free gap in the day that fits a task of a given length.
+- **Persistence** — `Owner.save_to_json()` / `Owner.load_from_json()` store all pets and tasks in `data.json` so data survives between runs.
 - **Plan explanations** — `Scheduler.explain()` reports how many minutes were used and which tasks were skipped for lack of time.
 - **Chronological sorting** — `Scheduler.sort_by_time()` lists tasks in `HH:MM` order (untimed tasks last).
 - **Filtering** — `Scheduler.filter_tasks()` narrows tasks by pet name and/or completion status.
@@ -111,6 +113,59 @@ overlaps), and time-zone / date-rollover behavior around recurrence is not yet t
 | Filtering | `Scheduler.filter_tasks(pet_name, done)` | Filter tasks by pet name and/or completion status (either or both). |
 | Conflict handling | `Scheduler.detect_conflicts()` | Lightweight check: returns warning strings (never raises) when two active tasks share the same start time. |
 | Recurring tasks | `Scheduler.complete_task()` + `Task.next_occurrence()` | Completing a `daily`/`weekly` task auto-queues a fresh copy due +1 / +7 days (via `timedelta`). |
+
+## 🚀 Stretch Challenges
+
+### Challenge 1 — Next available slot
+
+`Scheduler.next_available_slot(duration_min, day_start="08:00", day_end="21:00")` is a
+third algorithmic capability beyond sorting/filtering/conflicts. It converts each timed
+task into an occupied `(start, finish)` interval, scans the day in order, and returns the
+first gap large enough for the requested duration (or `None` if none fits). Surfaced in
+the app under **🕳️ Find the next free slot**. See `ai_interactions.md` for the agent
+workflow that built it.
+
+### Challenge 2 — Data persistence
+
+PawPal+ remembers data between runs via `data.json`. Complex objects (and `date` fields)
+are handled with **custom dictionary conversion** rather than a heavier library like
+`marshmallow`: `Owner.to_dict()` walks owner → pets → tasks into JSON-safe primitives
+(serializing `due_date` with `.isoformat()`), and `Owner.from_dict()` rebuilds the object
+graph (parsing dates with `date.fromisoformat()`).
+
+**Workflow:** `Owner.save_to_json("data.json")` writes the file; `Owner.load_from_json("data.json")`
+restores it (returning `None` if the file is missing). The Streamlit app loads on startup
+and re-saves after every add/complete, so closing and reopening the app keeps your pets and
+tasks. **Files modified:** `pawpal_system.py` (serialization methods), `app.py` (load on
+start + save on mutate), `.gitignore` (ignore `data.json`).
+
+### Challenge 3 — Priority-based scheduling
+
+`build_plan()` now sorts by **priority first, then start time, then duration**. CLI proof
+(note high-priority tasks are placed before the medium one, and ties break by time):
+
+```
+📅 Today's Schedule for Quoc
+╭─────┬────────┬────────────────┬─────────┬────────────┬────────────┬────────╮
+│   # │ Time   │ Task           │ Pet     │ Duration   │ Priority   │ Done   │
+├─────┼────────┼────────────────┼─────────┼────────────┼────────────┼────────┤
+│   1 │ 08:00  │ 🍽️ Feeding     │ Biscuit │ 10 min     │ high       │ ⬜      │
+│   2 │ 08:00  │ 🚶 Morning walk │ Biscuit │ 30 min     │ high       │ ⬜      │
+│   3 │ 12:00  │ 🍽️ Feeding     │ Mittens │ 10 min     │ medium     │ ⬜      │
+╰─────┴────────┴────────────────┴─────────┴────────────┴────────────┴────────╯
+Planned 3 task(s) using 50 of 60 available minutes, ordered by priority, then time, then shortest duration.
+Skipped (not enough time): Evening walk, Play / enrichment.
+```
+
+### Challenge 4 — Professional output formatting
+
+`main.py` prints a polished CLI report using:
+
+- **`tabulate`** (`tablefmt="rounded_outline"`) for the schedule table.
+- **Emojis per task type** (`task_emoji()`): 🚶 walk · 🍽️ feeding · 💊 meds · 🎾 play · ✂️ grooming · 🧩 enrichment · 🐾 default.
+- **Color-coded priority** via ANSI codes (`color_priority()`): high = red, medium = yellow, low = green.
+- **Status icons** (✅ done / ⬜ pending) and section emojis (📅 🔍 🕳️ 💾).
+- `sys.stdout.reconfigure(encoding="utf-8")` so emojis/box-drawing render on Windows terminals.
 
 ## 📸 Demo Walkthrough
 

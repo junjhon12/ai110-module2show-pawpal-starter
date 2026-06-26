@@ -7,15 +7,23 @@ st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
 st.caption("Plan your pets' daily care based on time, priority, and conflicts.")
 
-# --- Application memory ----------------------------------------------------
+# --- Application memory & persistence --------------------------------------
 # Streamlit re-runs this script top-to-bottom on every interaction, so we keep
-# the Owner (and all its pets/tasks) in st.session_state instead of recreating
-# it each run. Create it once, then reuse the persisted instance.
+# the Owner in st.session_state. On first load we restore from data.json (if it
+# exists) so pets and tasks survive between app runs; mutations re-save.
+DATA_FILE = "data.json"
 if "owner" not in st.session_state:
-    st.session_state.owner = Owner(name="Jordan", minutes_available=60)
+    st.session_state.owner = Owner.load_from_json(DATA_FILE) or Owner(
+        name="Jordan", minutes_available=60
+    )
 
 owner: Owner = st.session_state.owner
 scheduler = Scheduler(owner)
+
+
+def save() -> None:
+    """Persist the current owner (and all nested data) to disk."""
+    owner.save_to_json(DATA_FILE)
 
 # --- Owner settings --------------------------------------------------------
 st.subheader("Owner")
@@ -39,6 +47,7 @@ with st.form("add_pet_form", clear_on_submit=True):
     if st.form_submit_button("Add pet"):
         if pet_name.strip():
             owner.add_pet(Pet(name=pet_name.strip(), species=species, breed=breed.strip()))
+            save()
             st.success(f"Added {pet_name}.")
         else:
             st.warning("Please enter a pet name.")
@@ -72,6 +81,7 @@ else:
                     time=start_time.strip(),
                 )
             )
+            save()
             st.success(f"Added '{task_title}' for {target} at {start_time}.")
 
 # --- Current pets & tasks --------------------------------------------------
@@ -94,6 +104,7 @@ if owner.pets:
                     # Completing a recurring task auto-queues its next occurrence.
                     if not task.done and st.button("Done", key=f"done-{p_idx}-{t_idx}"):
                         upcoming = scheduler.complete_task(pet, task)
+                        save()
                         if upcoming is not None:
                             st.toast(f"Next {task.name} queued for {upcoming.due_date}")
                         st.rerun()
@@ -107,6 +118,16 @@ st.subheader("Today's Schedule")
 conflicts = scheduler.detect_conflicts()
 for warning in conflicts:
     st.warning(f"⚠️ {warning}")
+
+# Next-available-slot finder.
+with st.expander("🕳️ Find the next free slot"):
+    want = st.number_input("Task length (min)", min_value=5, max_value=240, value=30, step=5)
+    if st.button("Find slot"):
+        slot = scheduler.next_available_slot(int(want))
+        if slot:
+            st.info(f"Earliest free {want}-min slot today: **{slot}**")
+        else:
+            st.warning("No free slot that long left in the day (08:00–21:00).")
 
 if st.button("Generate schedule"):
     plan = scheduler.build_plan()

@@ -134,3 +134,45 @@ def test_build_plan_skips_tasks_over_time_budget():
     owner, _ = _owner_with([Task("Long walk", 120, priority="high")])
     owner.minutes_available = 30
     assert Scheduler(owner).build_plan() == []
+
+
+# --- challenge features ----------------------------------------------------
+def test_build_plan_orders_by_priority_then_time():
+    """Within the budget, plan sorts by priority first, then by start time."""
+    owner, _ = _owner_with([
+        Task("Low early", 10, priority="low", time="06:00"),
+        Task("High late", 10, priority="high", time="20:00"),
+        Task("High early", 10, priority="high", time="07:00"),
+    ])
+    owner.minutes_available = 60
+    names = [t.name for _, t in Scheduler(owner).build_plan()]
+    assert names == ["High early", "High late", "Low early"]
+
+
+def test_next_available_slot_finds_gap():
+    """next_available_slot() returns the first gap large enough for a task."""
+    owner, _ = _owner_with([
+        Task("Walk", 30, time="08:00"),   # occupies 08:00-08:30
+        Task("Feed", 15, time="09:00"),   # occupies 09:00-09:15
+    ])
+    # A 30-min task cannot fit 08:30-09:00 (only 30 min, fits exactly) -> 08:30.
+    assert Scheduler(owner).next_available_slot(30) == "08:30"
+    # A 45-min task needs the gap after 09:15.
+    assert Scheduler(owner).next_available_slot(45) == "09:15"
+
+
+def test_save_and_load_round_trip(tmp_path):
+    """Owner saved to JSON reloads with the same pets and tasks."""
+    owner, pet = _owner_with([Task("Walk", 30, priority="high", time="08:00", frequency="daily")])
+    path = tmp_path / "data.json"
+    owner.save_to_json(str(path))
+    loaded = Owner.load_from_json(str(path))
+    assert loaded is not None
+    assert [p.name for p in loaded.pets] == ["Biscuit"]
+    t = loaded.pets[0].tasks[0]
+    assert (t.name, t.duration_min, t.priority, t.time) == ("Walk", 30, "high", "08:00")
+
+
+def test_load_missing_file_returns_none():
+    """Loading a non-existent file returns None instead of raising."""
+    assert Owner.load_from_json("does_not_exist_12345.json") is None

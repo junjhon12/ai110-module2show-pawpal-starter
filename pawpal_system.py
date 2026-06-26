@@ -1,11 +1,13 @@
 """PawPal+ logic layer (backend classes).
 
-Phase 4: adds smarter scheduling — sorting by time, filtering, recurring
-tasks, and lightweight conflict detection.
+Smarter scheduling — sorting by time, filtering, recurring tasks, conflict
+detection, priority-then-time planning, next-available-slot search, and
+JSON persistence.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
@@ -14,6 +16,20 @@ PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
 
 # How many days forward each recurrence frequency repeats.
 FREQUENCY_DAYS = {"daily": 1, "weekly": 7}
+
+# Sentinel used so untimed tasks sort after every real "HH:MM" time.
+_NO_TIME = "99:99"
+
+
+def _to_minutes(hhmm: str) -> int:
+    """Convert an "HH:MM" string to minutes since midnight."""
+    hours, minutes = hhmm.split(":")
+    return int(hours) * 60 + int(minutes)
+
+
+def _to_hhmm(total_minutes: int) -> str:
+    """Convert minutes since midnight back to a zero-padded "HH:MM" string."""
+    return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
 
 
 @dataclass
@@ -84,6 +100,80 @@ class Owner:
         """Return every (pet, task) pair across all of the owner's pets."""
         return [(pet, task) for pet in self.pets for task in pet.tasks]
 
+    # --- persistence -------------------------------------------------------
+    def to_dict(self) -> dict:
+        """Return a JSON-safe dict of this owner, its pets, and their tasks."""
+        return {
+            "name": self.name,
+            "minutes_available": self.minutes_available,
+            "preferences": self.preferences,
+            "pets": [
+                {
+                    "name": pet.name,
+                    "species": pet.species,
+                    "breed": pet.breed,
+                    "tasks": [
+                        {
+                            "name": t.name,
+                            "duration_min": t.duration_min,
+                            "priority": t.priority,
+                            "frequency": t.frequency,
+                            "time": t.time,
+                            # date is not JSON-native, so store ISO string or null.
+                            "due_date": t.due_date.isoformat() if t.due_date else None,
+                            "done": t.done,
+                        }
+                        for t in pet.tasks
+                    ],
+                }
+                for pet in self.pets
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Owner":
+        """Rebuild an Owner (with pets and tasks) from a to_dict() payload."""
+        owner = cls(
+            name=data["name"],
+            minutes_available=data.get("minutes_available", 60),
+            preferences=data.get("preferences", []),
+        )
+        for pet_data in data.get("pets", []):
+            pet = Pet(
+                name=pet_data["name"],
+                species=pet_data["species"],
+                breed=pet_data.get("breed", ""),
+            )
+            for t in pet_data.get("tasks", []):
+                due = t.get("due_date")
+                pet.add_task(
+                    Task(
+                        name=t["name"],
+                        duration_min=t["duration_min"],
+                        priority=t.get("priority", "medium"),
+                        frequency=t.get("frequency", "daily"),
+                        time=t.get("time", ""),
+                        due_date=date.fromisoformat(due) if due else None,
+                        done=t.get("done", False),
+                    )
+                )
+            owner.add_pet(pet)
+        return owner
+
+    def save_to_json(self, path: str = "data.json") -> None:
+        """Persist this owner (and all nested data) to a JSON file."""
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    @classmethod
+    def load_from_json(cls, path: str = "data.json") -> "Owner | None":
+        """Load an Owner from a JSON file, or return None if it does not exist."""
+        try:
+            with open(path, encoding="utf-8") as f:
+                return cls.from_dict(json.load(f))
+        except FileNotFoundError:
+            return None
+
 
 class Scheduler:
     """Builds a daily plan and runs smarter scheduling logic for an owner."""
@@ -136,13 +226,43 @@ class Scheduler:
             if len(names) > 1
         ]
 
+    # --- next available slot ----------------------------------------------
+    def next_available_slot(
+        self, duration_min: int, day_start: str = "08:00", day_end: str = "21:00"
+    ) -> str | None:
+        """Return the earliest "HH:MM" where a task of duration_min fits.
+
+        Scans the day from day_start to day_end and returns the first gap that
+        does not overlap any existing timed, not-done task. Returns None if no
+        gap large enough exists within the window.
+        """
+        start, end = _to_minutes(day_start), _to_minutes(day_end)
+        # Build sorted, occupied (start, finish) intervals from timed tasks.
+        busy = sorted(
+            (_to_minutes(t.time), _to_minutes(t.time) + t.duration_min)
+            for _, t in self.owner.all_tasks()
+            if t.time and not t.done
+        )
+        cursor = start
+        for busy_start, busy_finish in busy:
+            if busy_start - cursor >= duration_min:
+                return _to_hhmm(cursor)  # gap before this task is big enough
+            cursor = max(cursor, busy_finish)
+        if end - cursor >= duration_min:
+            return _to_hhmm(cursor)
+        return None
+
     # --- daily plan --------------------------------------------------------
     def _sorted_tasks(self) -> list[tuple[Pet, Task]]:
-        """Return pending tasks sorted by priority (desc) then duration (asc)."""
+        """Return pending tasks sorted by priority (desc), then time, then duration."""
         pending = [(p, t) for p, t in self.owner.all_tasks() if not t.done]
         return sorted(
             pending,
-            key=lambda pt: (-pt[1].priority_value(), pt[1].duration_min),
+            key=lambda pt: (
+                -pt[1].priority_value(),
+                pt[1].time or _NO_TIME,
+                pt[1].duration_min,
+            ),
         )
 
     def build_plan(self) -> list[tuple[Pet, Task]]:
@@ -165,7 +285,7 @@ class Scheduler:
         lines = [
             f"Planned {len(plan)} task(s) using {used} of "
             f"{self.owner.minutes_available} available minutes, "
-            "ordered by priority then shortest duration.",
+            "ordered by priority, then time, then shortest duration.",
         ]
         if self._last_skipped:
             skipped = ", ".join(t.name for _, t in self._last_skipped)
