@@ -63,16 +63,52 @@ class Task:
 
 @dataclass
 class Pet:
-    """A pet owned by the user, with its own list of care tasks."""
+    """A pet owned by the user, with RPG-style stats and a list of care tasks."""
 
     name: str
     species: str
     breed: str = ""
+    age: int = 0
+    level: int = 1
+    xp: int = 0
+    health: str = "healthy"  # healthy | tired | hurt | sick
+    mood: str = "content"    # happy | content | grumpy | sad
+    
+    # --- New RPG Attributes ---
+    speed: int = 5
+    endurance: int = 5
+    intelligence: int = 5
+    
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
         """Add a care task for this pet."""
         self.tasks.append(task)
+
+    # --- RPG progression ---------------------------------------------------
+    def xp_to_next(self) -> int:
+        """Return the XP required to reach the next level (scales with level)."""
+        return 100 * self.level
+
+    def add_xp(self, amount: int) -> int:
+        """Grant XP, leveling up as thresholds are crossed; return levels gained."""
+        gained = 0
+        self.xp += max(0, amount)
+        while self.xp >= self.xp_to_next():
+            self.xp -= self.xp_to_next()
+            self.level += 1
+            
+            # Stats grow when they level up!
+            self.speed += 1
+            self.endurance += 1
+            self.intelligence += 1
+            
+            gained += 1
+        return gained
+
+    def xp_progress(self) -> float:
+        """Return progress toward the next level as a fraction in [0, 1]."""
+        return min(1.0, self.xp / self.xp_to_next())
 
     def remove_task(self, task: Task) -> None:
         """Remove a care task from this pet."""
@@ -112,6 +148,14 @@ class Owner:
                     "name": pet.name,
                     "species": pet.species,
                     "breed": pet.breed,
+                    "age": pet.age,
+                    "level": pet.level,
+                    "xp": pet.xp,
+                    "health": pet.health,
+                    "mood": pet.mood,
+                    "speed": pet.speed,              
+                    "endurance": pet.endurance,      
+                    "intelligence": pet.intelligence,
                     "tasks": [
                         {
                             "name": t.name,
@@ -143,6 +187,14 @@ class Owner:
                 name=pet_data["name"],
                 species=pet_data["species"],
                 breed=pet_data.get("breed", ""),
+                age=pet_data.get("age", 0),
+                level=pet_data.get("level", 1),
+                xp=pet_data.get("xp", 0),
+                health=pet_data.get("health", "healthy"),
+                mood=pet_data.get("mood", "content"),
+                speed=pet_data.get("speed", 5),               
+                endurance=pet_data.get("endurance", 5),       
+                intelligence=pet_data.get("intelligence", 5), 
             )
             for t in pet_data.get("tasks", []):
                 due = t.get("due_date")
@@ -230,12 +282,7 @@ class Scheduler:
     def next_available_slot(
         self, duration_min: int, day_start: str = "08:00", day_end: str = "21:00"
     ) -> str | None:
-        """Return the earliest "HH:MM" where a task of duration_min fits.
-
-        Scans the day from day_start to day_end and returns the first gap that
-        does not overlap any existing timed, not-done task. Returns None if no
-        gap large enough exists within the window.
-        """
+        """Return the earliest "HH:MM" where a task of duration_min fits."""
         start, end = _to_minutes(day_start), _to_minutes(day_end)
         # Build sorted, occupied (start, finish) intervals from timed tasks.
         busy = sorted(
@@ -284,10 +331,10 @@ class Scheduler:
         used = sum(t.duration_min for _, t in plan)
         lines = [
             f"Planned {len(plan)} task(s) using {used} of "
-            f"{self.owner.minutes_available} available minutes, "
+            f"{self.owner.minutes_available} available energy (minutes), "
             "ordered by priority, then time, then shortest duration.",
         ]
         if self._last_skipped:
             skipped = ", ".join(t.name for _, t in self._last_skipped)
-            lines.append(f"Skipped (not enough time): {skipped}.")
+            lines.append(f"Skipped (not enough energy): {skipped}.")
         return "\n".join(lines)

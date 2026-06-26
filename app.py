@@ -1,20 +1,18 @@
 import streamlit as st
+import requests
 
 from pawpal_system import Owner, Pet, Scheduler, Task
 
-st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
+st.set_page_config(page_title="PawPal+ RPG", page_icon="🐾", layout="wide")
 
-st.title("🐾 PawPal+")
-st.caption("Plan your pets' daily care based on time, priority, and conflicts.")
+st.title("🐾 PawPal+ : Pet Care RPG")
+st.caption("Manage your pets, level them up, and keep their stats high!")
 
 # --- Application memory & persistence --------------------------------------
-# Streamlit re-runs this script top-to-bottom on every interaction, so we keep
-# the Owner in st.session_state. On first load we restore from data.json (if it
-# exists) so pets and tasks survive between app runs; mutations re-save.
 DATA_FILE = "data.json"
 if "owner" not in st.session_state:
     st.session_state.owner = Owner.load_from_json(DATA_FILE) or Owner(
-        name="Jordan", minutes_available=60
+        name="Player", minutes_available=120
     )
 
 owner: Owner = st.session_state.owner
@@ -25,137 +23,140 @@ def save() -> None:
     """Persist the current owner (and all nested data) to disk."""
     owner.save_to_json(DATA_FILE)
 
-# --- Owner settings --------------------------------------------------------
-st.subheader("Owner")
-col_a, col_b = st.columns(2)
-with col_a:
-    owner.name = st.text_input("Owner name", value=owner.name)
-with col_b:
+
+def get_pet_image(species: str) -> str:
+    """Fetch a random pet image from public APIs."""
+    try:
+        if species.lower() == "dog":
+            return requests.get("https://dog.ceo/api/breeds/image/random").json().get("message", "https://place.dog/300/300")
+        elif species.lower() == "cat":
+            return "https://cataas.com/cat"
+    except:
+        pass
+    return "https://via.placeholder.com/300?text=Pet+Image"
+
+
+# --- Sidebar: Owner & Pet Management ---------------------------------------
+with st.sidebar:
+    st.header("👤 Player Profile")
+    owner.name = st.text_input("Name", value=owner.name)
     owner.minutes_available = st.number_input(
-        "Minutes available today", min_value=1, max_value=600,
-        value=owner.minutes_available,
+        "Daily Energy (Minutes)", min_value=1, max_value=600, value=owner.minutes_available
     )
+    
+    st.divider()
+    st.subheader("➕ Summon a New Pet")
+    with st.form("add_pet_form", clear_on_submit=True):
+        pet_name = st.text_input("Name")
+        species = st.selectbox("Species", ["dog", "cat", "other"])
+        breed = st.text_input("Breed / Class")
+        age = st.number_input("Age", min_value=0, max_value=50, value=1)
+        if st.form_submit_button("Summon Pet"):
+            if pet_name.strip():
+                new_pet = Pet(name=pet_name.strip(), species=species, breed=breed.strip(), age=age)
+                owner.add_pet(new_pet)
+                save()
+                st.success(f"{pet_name} joined your party!")
+            else:
+                st.warning("Please enter a pet name.")
 
-st.divider()
-
-# --- Add a pet -------------------------------------------------------------
-st.subheader("Add a Pet")
-with st.form("add_pet_form", clear_on_submit=True):
-    pet_name = st.text_input("Pet name", value="Mochi")
-    species = st.selectbox("Species", ["dog", "cat", "other"])
-    breed = st.text_input("Breed (optional)", value="")
-    if st.form_submit_button("Add pet"):
-        if pet_name.strip():
-            owner.add_pet(Pet(name=pet_name.strip(), species=species, breed=breed.strip()))
-            save()
-            st.success(f"Added {pet_name}.")
-        else:
-            st.warning("Please enter a pet name.")
-
-st.divider()
-
-# --- Add a task to a pet ---------------------------------------------------
-st.subheader("Add a Task")
+# --- Main Area: RPG Pet Dashboards -----------------------------------------
+st.header("🛡️ Your Party")
 if not owner.pets:
-    st.info("Add a pet first, then you can give it tasks.")
-else:
-    with st.form("add_task_form", clear_on_submit=True):
-        pet_names = [p.name for p in owner.pets]
-        target = st.selectbox("For which pet?", pet_names)
-        task_title = st.text_input("Task title", value="Morning walk")
-        col1, col2 = st.columns(2)
-        with col1:
-            duration = st.number_input("Duration (min)", min_value=1, max_value=240, value=20)
-            priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
-        with col2:
-            start_time = st.text_input("Time (HH:MM)", value="08:00")
-            frequency = st.selectbox("Frequency", ["daily", "weekly", "once"])
-        if st.form_submit_button("Add task"):
-            pet = owner.pets[pet_names.index(target)]
-            pet.add_task(
-                Task(
-                    name=task_title.strip() or "Untitled task",
-                    duration_min=int(duration),
-                    priority=priority,
-                    frequency=frequency,
-                    time=start_time.strip(),
-                )
-            )
-            save()
-            st.success(f"Added '{task_title}' for {target} at {start_time}.")
+    st.info("No pets in your party yet. Summon one from the sidebar!")
 
-# --- Current pets & tasks --------------------------------------------------
-if owner.pets:
-    st.markdown("### Your Pets")
-    for p_idx, pet in enumerate(owner.pets):
-        label = f"{pet.name} ({pet.species}" + (f", {pet.breed}" if pet.breed else "") + ")"
-        with st.expander(label, expanded=True):
+for p_idx, pet in enumerate(owner.pets):
+    with st.container(border=True):
+        col_img, col_stats, col_tasks = st.columns([1, 2, 2])
+        
+        with col_img:
+            # RPG Avatar
+            st.image(get_pet_image(pet.species), use_container_width=True)
+            st.markdown(f"**{pet.name}**")
+            st.caption(f"Lvl {pet.level} {pet.breed or pet.species.capitalize()} • Age: {pet.age}")
+
+        with col_stats:
+            # RPG Stats
+            st.subheader("Stats")
+            st.progress(pet.xp_progress(), text=f"XP: {pet.xp} / {pet.xp_to_next()}")
+            
+            c1, c2 = st.columns(2)
+            c1.metric(label="❤️ Health", value=pet.health.capitalize())
+            c2.metric(label="✨ Mood", value=pet.mood.capitalize())
+            
+            # --- New Attributes Section ---
+            st.markdown("**Attributes**")
+            c3, c4, c5 = st.columns(3)
+            c3.metric(label="💨 Speed", value=pet.speed)
+            c4.metric(label="🛡️ Endurance", value=pet.endurance)
+            c5.metric(label="🧠 Intel", value=pet.intelligence)
+            
+            # Form to add tasks to this specific pet
+            with st.popover(f"📝 Assign Quest (Task) to {pet.name}"):
+                with st.form(f"task_form_{p_idx}", clear_on_submit=True):
+                    t_name = st.text_input("Quest Name")
+                    t_dur = st.number_input("Duration (min)", min_value=1, value=15)
+                    t_pri = st.selectbox("Priority", ["low", "medium", "high"], index=1)
+                    t_time = st.time_input("Start Time")
+                    t_freq = st.selectbox("Frequency", ["daily", "weekly", "once"])
+                    if st.form_submit_button("Assign"):
+                        pet.add_task(Task(
+                            name=t_name, duration_min=int(t_dur), priority=t_pri, 
+                            frequency=t_freq, time=t_time.strftime("%H:%M")
+                        ))
+                        save()
+                        st.rerun()
+
+        with col_tasks:
+            # Quest Log (Tasks)
+            st.subheader("📜 Active Quests")
             if not pet.tasks:
-                st.caption("No tasks yet.")
+                st.caption("No active quests.")
             for t_idx, task in enumerate(pet.tasks):
-                c1, c2 = st.columns([5, 1])
-                with c1:
-                    status = "✅" if task.done else "—"
-                    st.write(
-                        f"{status} **{task.name}** · {task.time or '--:--'} · "
-                        f"{task.duration_min} min · {task.priority} · {task.frequency}"
-                    )
-                with c2:
-                    # Completing a recurring task auto-queues its next occurrence.
-                    if not task.done and st.button("Done", key=f"done-{p_idx}-{t_idx}"):
+                if not task.done:
+                    c_info, c_btn = st.columns([3, 1])
+                    c_info.write(f"**{task.name}** \n⏰ {task.time or 'Anytime'} • ⏳ {task.duration_min}m • ⚠️ {task.priority.upper()}")
+                    if c_btn.button("Complete", key=f"done_{p_idx}_{t_idx}"):
+                        # Gamify completion: Grant XP based on task duration
+                        xp_gained = task.duration_min * 10
+                        leveled_up = pet.add_xp(xp_gained)
+                        
                         upcoming = scheduler.complete_task(pet, task)
                         save()
-                        if upcoming is not None:
-                            st.toast(f"Next {task.name} queued for {upcoming.due_date}")
+                        
+                        st.toast(f"Gained {xp_gained} XP!")
+                        if leveled_up:
+                            st.balloons()
+                            st.toast(f"{pet.name} leveled up to Level {pet.level}! 🎉")
                         st.rerun()
 
 st.divider()
 
-# --- Build schedule --------------------------------------------------------
-st.subheader("Today's Schedule")
+# --- Calendar & Schedule Visualization -------------------------------------
+st.header("📅 Daily Timetable")
 
-# Conflict warnings surface first so the owner sees clashes before planning.
+# Show conflict warnings first
 conflicts = scheduler.detect_conflicts()
-for warning in conflicts:
-    st.warning(f"⚠️ {warning}")
+if conflicts:
+    for warning in conflicts:
+        st.error(f"⚔️ Scheduling Conflict: {warning}")
 
-# Next-available-slot finder.
-with st.expander("🕳️ Find the next free slot"):
-    want = st.number_input("Task length (min)", min_value=5, max_value=240, value=30, step=5)
-    if st.button("Find slot"):
-        slot = scheduler.next_available_slot(int(want))
-        if slot:
-            st.info(f"Earliest free {want}-min slot today: **{slot}**")
-        else:
-            st.warning("No free slot that long left in the day (08:00–21:00).")
-
-if st.button("Generate schedule"):
-    plan = scheduler.build_plan()
-    if not plan:
-        st.info("No tasks to plan yet. Add some tasks above.")
-    else:
-        # Prioritized plan that fits the daily time budget.
-        st.markdown("#### Prioritized plan (fits your time budget)")
-        st.table(
-            [
-                {
-                    "#": i,
-                    "Time": task.time or "--:--",
-                    "Task": task.name,
-                    "Pet": pet.name,
-                    "Min": task.duration_min,
-                    "Priority": task.priority,
-                }
-                for i, (pet, task) in enumerate(plan, start=1)
-            ]
-        )
-        st.success(scheduler.explain().replace("\n", "  \n"))
-
-        # Full timeline, sorted chronologically by start time.
-        st.markdown("#### Full day, sorted by time")
-        st.table(
-            [
-                {"Time": t.time or "--:--", "Task": t.name, "Done": "✅" if t.done else "—"}
-                for t in scheduler.sort_by_time()
-            ]
-        )
+plan = scheduler.build_plan()
+if plan:
+    st.success(scheduler.explain())
+    
+    # Visualizing as a simple timetable using Streamlit's DataFrame
+    st.markdown("### 🕒 Timeline")
+    timeline_data = []
+    for pet, task in plan:
+        timeline_data.append({
+            "Time": task.time or "Flex",
+            "Quest": task.name,
+            "Party Member": pet.name,
+            "Cost (Energy)": f"{task.duration_min} min",
+            "Priority": task.priority.capitalize()
+        })
+        
+    st.dataframe(timeline_data, use_container_width=True, hide_index=True)
+else:
+    st.info("No quests planned for today. Rest and recover your energy!")
