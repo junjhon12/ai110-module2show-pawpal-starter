@@ -59,19 +59,37 @@ Skipped (not enough time): Play / enrichment.
 
 ## 🧪 Testing PawPal+
 
+Run the full suite from the project root:
+
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
 
-Sample test output:
+**What the tests cover** (`tests/test_pawpal.py`, 12 tests):
+
+- **Core behaviors** — marking a task complete flips its status; adding a task grows the pet's task list.
+- **Sorting** — tasks return in chronological `HH:MM` order, with untimed tasks placed last.
+- **Filtering** — `filter_tasks()` narrows by pet name and by completion status.
+- **Recurrence** — completing a `daily` task queues a fresh copy due exactly one day later; a `once` task does not recur.
+- **Conflict detection** — duplicate start times raise a warning; distinct times do not.
+- **Edge cases** — a pet with no tasks plans empty (no crash); tasks longer than the time budget are skipped.
+
+Successful run:
 
 ```
-# Paste your pytest output here
+============================= test session starts =============================
+platform win32 -- Python 3.14.4, pytest-9.0.3, pluggy-1.6.0
+collected 12 items
+
+tests\test_pawpal.py ............                                        [100%]
+
+============================= 12 passed in 0.07s ==============================
 ```
+
+**Confidence level:** ⭐⭐⭐⭐☆ (4/5) — all core logic (sorting, filtering, recurrence,
+conflict detection) is covered by passing tests, including key edge cases. Held back
+from 5/5 because conflict detection only checks exact time matches (not duration
+overlaps), and time-zone / date-rollover behavior around recurrence is not yet tested.
 
 ## 📐 Smarter Scheduling
 
