@@ -12,6 +12,18 @@ A busy pet owner needs help staying consistent with pet care. They want an assis
 
 Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
 
+## ✨ Features
+
+PawPal+ implements the following scheduling logic (see `pawpal_system.py`):
+
+- **Owner / Pet / Task model** — an owner manages multiple pets, each with its own list of care tasks (name, duration, priority, time, frequency).
+- **Priority-aware daily planning** — `Scheduler.build_plan()` orders tasks by priority, then shortest duration, and packs them into the owner's available minutes.
+- **Plan explanations** — `Scheduler.explain()` reports how many minutes were used and which tasks were skipped for lack of time.
+- **Chronological sorting** — `Scheduler.sort_by_time()` lists tasks in `HH:MM` order (untimed tasks last).
+- **Filtering** — `Scheduler.filter_tasks()` narrows tasks by pet name and/or completion status.
+- **Conflict warnings** — `Scheduler.detect_conflicts()` flags tasks that share a start time, returning friendly warnings instead of crashing.
+- **Recurring tasks** — completing a `daily`/`weekly` task (`Scheduler.complete_task()` + `Task.next_occurrence()`) automatically queues the next occurrence (+1 / +7 days via `timedelta`).
+
 ## What you will build
 
 Your final app should:
@@ -102,12 +114,57 @@ overlaps), and time-zone / date-rollover behavior around recurrence is not yet t
 
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+Launch the app with `streamlit run app.py`.
 
-1. User is given the option to add their pet type and breed, their pet's name
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+### Main UI features
+
+- **Owner panel** — set your name and the minutes you have available today.
+- **Add a Pet** — enter name, species, and optional breed.
+- **Add a Task** — pick a pet, then set title, duration, priority, start time (`HH:MM`), and frequency (`daily` / `weekly` / `once`).
+- **Your Pets** — each pet's tasks are listed with a **Done** button; completing a recurring task auto-queues its next occurrence.
+- **Today's Schedule** — conflict warnings appear at the top, then **Generate schedule** shows the prioritized plan, an explanation, and the full day sorted by time.
+
+### Example workflow
+
+1. Set owner **Quoc** with **60** available minutes.
+2. Add a pet → **Biscuit** (dog, Golden Retriever).
+3. Add tasks → "Morning walk" 08:00 (high), "Feeding" 08:00 (high), "Evening walk" 18:00 (high).
+4. A ⚠️ conflict warning appears for the two **08:00** tasks.
+5. Click **Generate schedule** → tasks are ordered by priority within the 60-minute budget, the explanation lists anything skipped, and the full timeline is sorted chronologically.
+6. Click **Done** on "Morning walk" → it is marked complete and tomorrow's occurrence is queued automatically.
+
+### Scheduler behaviors shown
+
+- **Sorting** by start time (`sort_by_time`)
+- **Priority + time-budget planning** (`build_plan`, `explain`)
+- **Conflict warnings** for duplicate times (`detect_conflicts`)
+- **Daily/weekly recurrence** on completion (`complete_task`, `next_occurrence`)
+
+### Sample CLI output (`python main.py`)
+
+```
+Today's Schedule for Quoc
+========================================
+  1. Feeding for Biscuit (10 min) [priority: high] [todo]
+  2. Evening walk for Biscuit (30 min) [priority: high] [todo]
+  3. Feeding for Mittens (10 min) [priority: medium] [todo]
+----------------------------------------
+Planned 3 task(s) using 50 of 60 available minutes, ordered by priority then shortest duration.
+Skipped (not enough time): Morning walk, Play / enrichment.
+
+Tasks sorted by time:
+  08:00  Morning walk
+  08:00  Feeding
+  12:00  Feeding
+  15:00  Play / enrichment
+  18:00  Evening walk
+
+Conflict detection:
+  Conflict at 08:00: Morning walk (Biscuit), Feeding (Biscuit) overlap.
+
+Recurring tasks - completing Biscuit's morning walk:
+  Completed: Morning walk (done=True)
+  Next occurrence due: 2026-06-26 (done=False)
+```
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
