@@ -85,7 +85,7 @@ Sample test output:
 
 Describe your app in numbered steps so a reader can follow along without watching a video:
 
-1. <!-- Describe this step -->
+1. User is given the option to add their pet type and breed, their pet's name
 2. <!-- Describe this step -->
 3. <!-- Describe this step -->
 4. <!-- Describe this step -->
