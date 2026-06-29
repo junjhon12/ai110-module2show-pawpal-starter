@@ -1,0 +1,41 @@
+classDiagram
+    class TaskFrequency {
+        <<enumeration>>
+        Once
+        Daily
+        Weekly
+    }
+    
+    class Task {
+        +String id
+        +String description
+        +String time
+        +TaskFrequency frequency
+        +Boolean isComplete
+        +markComplete() void
+    }
+    
+    class Pet {
+        +String id
+        +String name
+        +String species
+        +Task[] tasks
+        +addTask(task: Task) void
+    }
+    
+    class Owner {
+        +String name
+        +Pet[] pets
+        +addPet(pet: Pet) void
+        +getAllTasks() Array
+    }
+    
+    class Scheduler {
+        +Owner owner
+        +getSortedTasks() Array
+        +checkConflicts() Array
+    }
+
+    Pet "1" *-- "many" Task : Has
+    Owner "1" *-- "many" Pet : Owns
+    Scheduler "1" o-- "1" Owner : Manages
