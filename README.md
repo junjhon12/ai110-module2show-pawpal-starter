@@ -61,14 +61,13 @@ pip install -r requirements.txt
 Output from running `python main.py`:
 
 ```
-Today's Schedule for Quoc
-========================================
-  1. Feeding for Biscuit (10 min) [priority: high] [todo]
-  2. Morning walk for Biscuit (30 min) [priority: high] [todo]
-  3. Feeding for Mittens (10 min) [priority: medium] [todo]
-----------------------------------------
-Planned 3 task(s) using 50 of 60 available minutes, ordered by priority then shortest duration.
-Skipped (not enough time): Play / enrichment.
+--- Today's Schedule for Jordan's Pets ---
+[ ] 08:00 - Mochi: Morning Walk (30 min | Priority: high)
+[ ] 09:00 - Luna: Clean Litterbox (10 min | Priority: medium)
+[ ] 18:00 - Mochi: Dinner (15 min | Priority: high)
+------------------------------------------
+
+Planned 3 quest(s) using 55 of 120 available minutes.
 ```
 
 ## 🧪 Testing PawPal+

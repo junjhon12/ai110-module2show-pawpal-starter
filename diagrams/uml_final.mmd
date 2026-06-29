@@ -1,55 +1,55 @@
 classDiagram
-    %% PawPal+ final class diagram — matches pawpal_system.py after Phase 4/5.
-
-    class Owner {
-        +str name
-        +int minutes_available
-        +list~str~ preferences
-        +list~Pet~ pets
-        +add_pet(pet: Pet) None
-        +list_pets() list~Pet~
-        +all_tasks() list~Pet,Task~
-        +to_dict() dict
-        +from_dict(data: dict) Owner
-        +save_to_json(path) None
-        +load_from_json(path) Owner
-    }
-
-    class Pet {
-        +str name
-        +str species
-        +str breed
-        +list~Task~ tasks
-        +add_task(task: Task) None
-        +remove_task(task: Task) None
-    }
-
     class Task {
-        +str name
+        +String name
         +int duration_min
-        +str priority
-        +str frequency
-        +str time
-        +date due_date
-        +bool done
-        +mark_complete() None
-        +priority_value() int
-        +next_occurrence() Task
+        +String time
+        +String priority
+        +String frequency
+        +Date due_date
+        +Boolean done
+        +mark_complete() void
     }
-
+    
+    class Pet {
+        +String name
+        +String species
+        +String breed
+        +int age
+        +int xp
+        +int level
+        +String health
+        +String mood
+        +int speed
+        +int endurance
+        +int intelligence
+        +Task[] tasks
+        +add_task(task: Task) void
+        +xp_to_next() int
+        +xp_progress() float
+        +add_xp(amount: int) bool
+    }
+    
+    class Owner {
+        +String name
+        +int minutes_available
+        +Pet[] pets
+        +add_pet(pet: Pet) void
+        +save_to_json(path: str) void
+        +load_from_json(path: str)$ Owner
+    }
+    
     class Scheduler {
         +Owner owner
-        +sort_by_time(tasks) list~Task~
-        +filter_tasks(pet_name, done) list~Task~
+        -_get_all_tasks() list
+        +sort_by_time() list
+        +filter_tasks(pet_name, done) list
         +complete_task(pet, task) Task
-        +detect_conflicts() list~str~
+        +detect_conflicts() list
+        +build_plan() list
         +next_available_slot(duration_min, day_start, day_end) str
-        +build_plan() list~Pet,Task~
         +explain() str
     }
 
-    Owner "1" --> "*" Pet : has
-    Pet "1" --> "*" Task : has
-    Scheduler --> Owner : plans for
-    Scheduler ..> Task : sorts / filters / detects conflicts
-    Task ..> Task : next_occurrence creates
+    Pet "1" *-- "many" Task : Has
+    Owner "1" *-- "many" Pet : Owns
+    Scheduler "1" o-- "1" Owner : Manages
