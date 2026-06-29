@@ -1,5 +1,5 @@
 classDiagram
-    %% PawPal+ class diagram (Phase 1 draft — update in Phase 6 to match implementation)
+    %% PawPal+ final class diagram — matches pawpal_system.py after Phase 4/5.
 
     class Owner {
         +str name
@@ -9,6 +9,10 @@ classDiagram
         +add_pet(pet: Pet) None
         +list_pets() list~Pet~
         +all_tasks() list~Pet,Task~
+        +to_dict() dict
+        +from_dict(data: dict) Owner
+        +save_to_json(path) None
+        +load_from_json(path) Owner
     }
 
     class Pet {
@@ -25,13 +29,21 @@ classDiagram
         +int duration_min
         +str priority
         +str frequency
+        +str time
+        +date due_date
         +bool done
         +mark_complete() None
         +priority_value() int
+        +next_occurrence() Task
     }
 
     class Scheduler {
         +Owner owner
+        +sort_by_time(tasks) list~Task~
+        +filter_tasks(pet_name, done) list~Task~
+        +complete_task(pet, task) Task
+        +detect_conflicts() list~str~
+        +next_available_slot(duration_min, day_start, day_end) str
         +build_plan() list~Pet,Task~
         +explain() str
     }
@@ -39,3 +51,5 @@ classDiagram
     Owner "1" --> "*" Pet : has
     Pet "1" --> "*" Task : has
     Scheduler --> Owner : plans for
+    Scheduler ..> Task : sorts / filters / detects conflicts
+    Task ..> Task : next_occurrence creates

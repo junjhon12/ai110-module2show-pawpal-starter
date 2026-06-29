@@ -1,4 +1,6 @@
 __pycache__/
+.claude/
+data.json
 .venv/
 .venv_new/
 .pytest_cache/
